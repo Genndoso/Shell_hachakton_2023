@@ -3,7 +3,7 @@ from skopt.space import Integer, Real
 
 def get_depot_param_space(biomass):
     # at least 80% should be harvested
-    number_of_depots = int(0.8 * biomass.sum() / 20000) + 1
+    number_of_depots = int(biomass.sum() / 20000) + 1
     if number_of_depots > 25:
         number_of_depots = 25
     print(f'Optimal number of depots is {number_of_depots}.')

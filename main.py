@@ -44,7 +44,7 @@ def get_submission_file(study, path_to_save='submissions/sub1.csv'):
     sum_cost_depot = opt.calculate_depot_sum(last_time_distr, depot_idx)
     sum_cost_ref = opt.refinery_obj(last_time_distr, ref_idx)
 
-    print('Sum cost of optimization': sum_cost_depot + sum_cost_ref)
+    print(f'Sum cost of optimization: {sum_cost_depot + sum_cost_ref}')
 
     final_df = opt.final_df.copy()
 
