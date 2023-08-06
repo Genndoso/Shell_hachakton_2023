@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 
 class Greedy_algorithm():
@@ -16,86 +17,135 @@ class Greedy_algorithm():
         self.number_of_refineries = number_of_refineries
         self.optimize = optimize
 
-
-    def objective_depot(self, space):
-
-        depot_dist = self.dist.iloc[:, space[0:self.number_of_depots]]
-        percentage_utilized = space[-1]
+    def cost(self, space, demand, type = 'depot'):
+        '''
+        If refinery type is chosen, function assumes self.depot_biomass_supply (which is demand for refineries) is calculated
+        '''
+        if type == 'depot':
+            dist = self.dist.iloc[:, space[0:self.number_of_depots]]
+            percentage_utilized = space[-1]
+        elif type == 'refinery':
+            dist = self.dist.iloc[demand.index, space]
 
         # Distance X Demand
-        depot_cost_per_delivery = depot_dist.T * self.biomass
+        cost_per_delivery = dist.T * demand
 
         # Unpivot depot_cost_per_delivery
-        melted_df = depot_cost_per_delivery.reset_index().melt(id_vars='index')
+        melted_df = cost_per_delivery.reset_index().melt(id_vars='index')
         melted_df.columns = ['Destination location', 'Source location', 'Cost']
         melted_df = melted_df[['Source location', 'Destination location', 'Cost']]
         melted_df['Source location'] = melted_df['Source location'].astype('int')
         melted_df['Destination location'] = melted_df['Destination location'].astype('int')
         min_cost_df = melted_df.loc[melted_df.groupby('Source location')['Cost'].idxmin()]
         min_cost_df.reset_index(drop=True, inplace=True)
-        sorted_df = min_cost_df.sort_values(by='Cost')
-        num_rows_to_delete = int((1 - percentage_utilized) * sorted_df.shape[0])
-        trimmed_df = sorted_df.iloc[:-num_rows_to_delete]
+        min_cost_df = min_cost_df.sort_values(by='Cost')
+        if type == 'depot':
+            num_rows_to_delete = int((1 - percentage_utilized) * min_cost_df.shape[0])
+            min_cost_df = min_cost_df.iloc[:-num_rows_to_delete]
 
-        self.overall_depot_delivery_cost = trimmed_df['Cost'].sum()
+        transport_cost = min_cost_df['Cost'].sum()
 
-        # Calculate biomass supply delivered to each depot
-        self.depot_biomass_supply = []
-        depots = depot_cost_per_delivery.index.astype('int')
-        for depot in depots:
-            HS_to_depot = trimmed_df.loc[
-                trimmed_df['Destination location'] == depot, ['Source location']].values.ravel()
-            self.depot_biomass_supply.append(self.biomass[HS_to_depot].sum())
-        self.depot_biomass_supply = pd.Series(self.depot_biomass_supply, index=depots)
+        # Calculate biomass/pellet supply
+        supply = []
+        locations = cost_per_delivery.index.astype('int')
+        for location in locations:
+            demand_to_supply = min_cost_df.loc[
+                min_cost_df['Destination location'] == location, ['Source location']].values.ravel()
+            supply.append(demand[demand_to_supply].sum())
+        supply = pd.Series(supply, index=locations)
+
+        return supply, transport_cost, min_cost_df
+
+    def depot_constraint(self, space):
+        depot_biomass_supply, _, _ = self.cost(space = space,
+                                               demand = self.biomass,
+                                               type = 'depot')
+        if (depot_biomass_supply > 20e3).any():
+            return -1
+        else:
+            return 1
+
+    def refinery_constraint(self, space):
+        refinery_pellet_supply, _, _ = self.cost(space = space,
+                                                 demand = self.depot_biomass_supply,
+                                                 type = 'refinery')
+        if (refinery_pellet_supply > 10e4).any():
+            return -1
+        else:
+            return 1
+
+    def harvest_constraint(self, space):
+        depot_biomass_supply, _, _ = self.cost(space=space,
+                                               demand=self.biomass,
+                                               type='depot')
+        if depot_biomass_supply.sum() < 0.8 * self.biomass.sum():
+            return -1
+        else:
+            return 1
+
+    def same_location_constraint(self, space):
+        """
+        Checks if there are no equal integer values in an array.
+
+        Args:
+          array: The array to check.
+
+        Returns:
+          True if there are no equal integer values in the array, False otherwise.
+        """
+        seen = set()
+        for i in range(len(space)):
+            if space[i] in seen:
+                return -1
+            seen.add(space[i])
+        return 1
+
+    def integer_constraint(self, space):
+        # Map continuous space to integer values
+        mapped_space = np.round(space).astype(int)
+        return (mapped_space - space)
+
+    def objective_depot(self, space):
+
+        self.depot_biomass_supply, self.depot_transport_cost, solution = self.cost(space = space,
+                                                                                   demand = self.biomass,
+                                                                                   type = 'depot')
+        # Constraints on depot capacity and harvest requirement
+        if self.optimize:
+            if self.depot_constraint(space) < 0:
+                return 10e9
+            elif self.harvest_constraint(space) < 0:
+                return 10e9
+            elif self.same_location_constraint(space[0:self.number_of_depots]) < 0:
+                return 10e9
+
+        # Underutilization cost
+        self.depot_underutilization_cost = (20e3 - self.depot_biomass_supply).sum()
+        self.depot_transport_underutilization_cost = 0.001 * self.depot_transport_cost + self.depot_underutilization_cost
 
         if self.optimize:
-            # Each depot is max 20000 capacity
-            if (self.depot_biomass_supply > 20e3).any():
-                return 10e3*sorted_df['Cost'].sum()
-
-            # More than 80% of biomass should be harvested
-            elif 0.8 * self.biomass.sum() > self.depot_biomass_supply.sum():
-                return 10e3*sorted_df['Cost'].sum()
-
-            else:
-                return self.overall_depot_delivery_cost
+            return self.depot_transport_underutilization_cost
         else:
-            return self.overall_depot_delivery_cost, self.depot_biomass_supply, trimmed_df
+            return self.depot_transport_underutilization_cost, self.depot_biomass_supply, solution
 
 
     def objective_refinery(self, space):
 
-        refinery_dist = self.dist.iloc[self.depot_biomass_supply.index, space]
+        self.refinery_pellet_supply, self.refinery_transport_cost, solution = self.cost(space = space,
+                                                                                        demand = self.depot_biomass_supply,
+                                                                                        type = 'refinery')
+        # Constraints on refinery
+        if self.optimize:
+            if self.refinery_constraint(space) < 0:
+                return 10e9
+            elif self.same_location_constraint(space) < 0:
+                return 10e9
 
-        # Distance X Demand
-        refinery_cost_per_delivery = refinery_dist.T * self.depot_biomass_supply
-
-        # Unpivot refinery_cost_per_delivery
-        melted_df = refinery_cost_per_delivery.reset_index().melt(id_vars='index')
-        melted_df.columns = ['Destination location', 'Source location', 'Cost']
-        melted_df = melted_df[['Source location', 'Destination location', 'Cost']]
-        melted_df['Source location'] = melted_df['Source location'].astype('int')
-        melted_df['Destination location'] = melted_df['Destination location'].astype('int')
-        min_cost_df = melted_df.loc[melted_df.groupby('Source location')['Cost'].idxmin()]
-        min_cost_df.reset_index(drop=True, inplace=True)
-
-        self.overall_refinery_delivery_cost = min_cost_df['Cost'].sum()
-
-        # Calculate biomass supply delivered to each refinery
-        self.refinery_biomass_supply = []
-        refineries = refinery_cost_per_delivery.index.astype('int')
-        for refinery in refineries:
-            depot_to_refinery = min_cost_df.loc[
-                min_cost_df['Destination location'] == refinery, ['Source location']].values.ravel()
-            self.refinery_biomass_supply.append(self.depot_biomass_supply[depot_to_refinery].sum())
-        self.refinery_biomass_supply = pd.Series(self.refinery_biomass_supply, index=refineries)
+        # Underutilization cost
+        self.refinery_underutilization_cost = (10e4 - self.refinery_pellet_supply).sum()
+        self.refinery_transport_underutilization_cost = 0.001 * self.refinery_transport_cost + self.refinery_underutilization_cost
 
         if self.optimize:
-            # Each refinery is max 100000 capacity
-            if (self.refinery_biomass_supply > 10e4).any():
-                return 10e3 * self.overall_refinery_delivery_cost
-
-            else:
-                return self.overall_refinery_delivery_cost
+            return self.refinery_transport_underutilization_cost
         else:
-            return self.overall_refinery_delivery_cost, self.refinery_biomass_supply, min_cost_df
+            return self.refinery_transport_underutilization_cost, self.refinery_pellet_supply, solution
