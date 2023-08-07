@@ -54,34 +54,34 @@ class Greedy_algorithm():
             supply.append(demand[demand_to_supply].sum())
         supply = pd.Series(supply, index=locations)
 
-        return supply, transport_cost, min_cost_df
+        return transport_cost, supply, min_cost_df
 
     def depot_constraint(self, space):
-        depot_biomass_supply, _, _ = self.cost(space = space,
+        _, depot_biomass_supply, _ = self.cost(space = space,
                                                demand = self.biomass,
                                                type = 'depot')
         if (depot_biomass_supply > 20e3).any():
-            return -1
+            return float(1) #constraint violated
         else:
-            return 1
+            return float(0) #feasible
 
     def refinery_constraint(self, space):
-        refinery_pellet_supply, _, _ = self.cost(space = space,
+        _, refinery_pellet_supply, _ = self.cost(space = space,
                                                  demand = self.depot_biomass_supply,
                                                  type = 'refinery')
         if (refinery_pellet_supply > 10e4).any():
-            return -1
+            return float(1) #constraint violated
         else:
-            return 1
+            return float(0) #feasible
 
     def harvest_constraint(self, space):
-        depot_biomass_supply, _, _ = self.cost(space=space,
+        _, depot_biomass_supply, _ = self.cost(space=space,
                                                demand=self.biomass,
                                                type='depot')
         if depot_biomass_supply.sum() < 0.8 * self.biomass.sum():
-            return -1
+            return float(1) #constraint violated
         else:
-            return 1
+            return float(0) #feasible
 
     def same_location_constraint(self, space):
         """
@@ -96,9 +96,9 @@ class Greedy_algorithm():
         seen = set()
         for i in range(len(space)):
             if space[i] in seen:
-                return -1
+                return float(1) #constraint violated
             seen.add(space[i])
-        return 1
+        return float(0) #feasible
 
     def integer_constraint(self, space):
         # Map continuous space to integer values
@@ -107,16 +107,16 @@ class Greedy_algorithm():
 
     def objective_depot(self, space):
 
-        self.depot_biomass_supply, self.depot_transport_cost, solution = self.cost(space = space,
+        self.depot_transport_cost, self.depot_biomass_supply, solution = self.cost(space = space,
                                                                                    demand = self.biomass,
                                                                                    type = 'depot')
         # Constraints on depot capacity and harvest requirement
         if self.optimize:
-            if self.depot_constraint(space) < 0:
+            if self.depot_constraint(space) > 0: # if >0 constraint violated
                 return 10e9
-            elif self.harvest_constraint(space) < 0:
+            elif self.harvest_constraint(space) > 0: # if >0 constraint violated
                 return 10e9
-            elif self.same_location_constraint(space[0:self.number_of_depots]) < 0:
+            elif self.same_location_constraint(space[0:self.number_of_depots]) > 0: # if >0 constraint violated
                 return 10e9
 
         # Underutilization cost
@@ -131,14 +131,14 @@ class Greedy_algorithm():
 
     def objective_refinery(self, space):
 
-        self.refinery_pellet_supply, self.refinery_transport_cost, solution = self.cost(space = space,
+        self.refinery_transport_cost, self.refinery_pellet_supply, solution = self.cost(space = space,
                                                                                         demand = self.depot_biomass_supply,
                                                                                         type = 'refinery')
         # Constraints on refinery
         if self.optimize:
-            if self.refinery_constraint(space) < 0:
+            if self.refinery_constraint(space) > 0: # if >0 constraint violated
                 return 10e9
-            elif self.same_location_constraint(space) < 0:
+            elif self.same_location_constraint(space) < 0: # if >0 constraint violated
                 return 10e9
 
         # Underutilization cost

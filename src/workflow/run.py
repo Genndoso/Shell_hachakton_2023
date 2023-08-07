@@ -4,7 +4,7 @@ from src.commons.utils import get_depot_param_space, get_refinery_param_space
 from src.supply_chain_opt.greedy_algorithm import Greedy_algorithm
 from skopt import gp_minimize
 
-os.chdir('/Users/vitalijstarikov/PycharmProjects/Shell_hachakton_2023')
+os.chdir('/Users/user/PycharmProjects/Shell_hachakton_2023')
 data = pd.read_csv('data/Biomass_History.csv', index_col=0)
 dist = pd.read_csv('data/Distance_Matrix.csv', index_col=0)
 biomass_2010 = data['2010']
