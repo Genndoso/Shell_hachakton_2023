@@ -105,28 +105,42 @@ class Greedy_algorithm():
         mapped_space = np.round(space).astype(int)
         return (mapped_space - space)
 
+    def penalty_depot_constraint(self, space):
+        _, depot_biomass_supply, _ = self.cost(space=space,
+                                               demand=self.biomass,
+                                               type='depot')
+        if (depot_biomass_supply > 20e3).any():
+            depot_overutilization_penalty = 3*(depot_biomass_supply[depot_biomass_supply > 20e3] - 20e3).sum()
+        else:
+            depot_overutilization_penalty = 0
+
+        return depot_overutilization_penalty
+
+    def penalty_harvest_constraint(self, space):
+        _, depot_biomass_supply, _ = self.cost(space=space,
+                                               demand=self.biomass,
+                                               type='depot')
+        if depot_biomass_supply.sum() < 0.8 * self.biomass.sum():
+            underharvested_penalty = 3*(0.8 * self.biomass.sum() - depot_biomass_supply.sum())
+        else:
+            underharvested_penalty = 0
+
+        return underharvested_penalty
+
     def objective_depot(self, space):
 
         self.depot_transport_cost, self.depot_biomass_supply, solution = self.cost(space = space,
                                                                                    demand = self.biomass,
                                                                                    type = 'depot')
-        # Constraints on depot capacity and harvest requirement
-        if self.optimize:
-            if self.depot_constraint(space) > 0: # if >0 constraint violated
-                return 10e9
-            elif self.harvest_constraint(space) > 0: # if >0 constraint violated
-                return 10e9
-            elif self.same_location_constraint(space[0:self.number_of_depots]) > 0: # if >0 constraint violated
-                return 10e9
 
         # Underutilization cost
-        self.depot_underutilization_cost = (20e3 - self.depot_biomass_supply).sum()
-        self.depot_transport_underutilization_cost = 0.001 * self.depot_transport_cost + self.depot_underutilization_cost
+        #self.depot_underutilization_cost = (20e3 - self.depot_biomass_supply).sum()
+        #self.depot_transport_underutilization_cost = 0.001 * self.depot_transport_cost + self.depot_underutilization_cost
 
         if self.optimize:
-            return self.depot_transport_underutilization_cost
+            return 0.001 * self.depot_transport_cost
         else:
-            return self.depot_transport_underutilization_cost, self.depot_biomass_supply, solution
+            return 0.001 * self.depot_transport_cost, self.depot_biomass_supply, solution
 
 
     def objective_refinery(self, space):
@@ -134,12 +148,6 @@ class Greedy_algorithm():
         self.refinery_transport_cost, self.refinery_pellet_supply, solution = self.cost(space = space,
                                                                                         demand = self.depot_biomass_supply,
                                                                                         type = 'refinery')
-        # Constraints on refinery
-        if self.optimize:
-            if self.refinery_constraint(space) > 0: # if >0 constraint violated
-                return 10e9
-            elif self.same_location_constraint(space) < 0: # if >0 constraint violated
-                return 10e9
 
         # Underutilization cost
         self.refinery_underutilization_cost = (10e4 - self.refinery_pellet_supply).sum()
