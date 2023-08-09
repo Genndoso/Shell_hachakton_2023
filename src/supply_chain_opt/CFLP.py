@@ -12,8 +12,8 @@ EPS = 1.e-6
 year1 = '2018'; year2 = '2019'
 max_number_of_depots = 25
 max_number_of_refineries = 5
-depot_cap = 5000
-refinery_cap = 20000
+depot_cap = 20000
+refinery_cap = 100000
 
 def predict_biomass(data):
     reg = TheilSenRegressor()
