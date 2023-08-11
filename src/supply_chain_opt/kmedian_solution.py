@@ -82,10 +82,15 @@ if __name__ == '__main__':
                      c=depot_refinery_dist,
                      k=number_of_refineries)
     model2.optimize()
-    x2, y2 = model1.data
+    x2, y2 = model2.data
     refinery_locations = [j for j in y2 if model2.getVal(y2[j]) > EPS]
     boolean_refinery_locations = {j: model2.getVal(y2[j]) for j in possible_refinery_locations}
     print("Refineries at nodes: ", refinery_locations)
+
+    print(depot_locations)
+    print(refinery_locations)
+    print(boolean_depot_locations)
+    print(boolean_refinery_locations)
 
 
     ''' OPTIMIZE SUPPLY CHAIN ROUTES FOR EACH YEAR '''
@@ -185,5 +190,5 @@ if __name__ == '__main__':
                           refinery_routes_year1_solution,
                           biomass_prediction_year2_solution,
                           depot_routes_year2_solution,
-                          refinery_routes_year2_solution], axis=0)
+                          refinery_routes_year2_solution], axis=0, ignore_index=True)
     solution.to_csv('submission/SCIP_solution.csv')
