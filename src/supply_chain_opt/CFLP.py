@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.linear_model import TheilSenRegressor
 from pyscipopt import Model, quicksum, multidict
 import os
-os.chdir('/Users/vitalijstarikov/PycharmProjects/Shell_hachakton_2023')
+os.chdir('/Users/user/PycharmProjects/Shell_hachakton_2023')
 
 data = pd.read_csv('data/Biomass_History.csv', index_col=0)
 dist = pd.read_csv('data/Distance_Matrix.csv', index_col=0)
@@ -19,17 +19,16 @@ def predict_biomass(data):
     reg = TheilSenRegressor()
     X = np.arange(0,8).reshape(-1,1)
     pred_list = []
-    for i in range(0, len(data)):
+    for i in range(len(data)):
         y = data.iloc[i, 2:].values.ravel()
         reg.fit(X,y)
         preds = reg.predict(np.array([8, 9]).reshape(-1, 1))
         pred_list.append(list(preds))
     pred_df = pd.DataFrame(np.array(pred_list).squeeze(), columns=['2018', '2019'],
-                               index=np.arange(0, len(data)))
+                               index=data.index)
     data_predicted = pd.concat([data, pred_df], axis=1)
 
     return data_predicted
-
 def CFLP(I,J,d,M,c,n):
     model = Model("flp")
     x,y = {},{}
@@ -52,7 +51,7 @@ def CFLP(I,J,d,M,c,n):
     model.data = x,y
     return model
 
-def CFLP_second_year(I,J,d,M,c,y):
+def CFLP_recalculate_routes(I, J, d, M, c, y):
     model = Model("flp")
     x = {}
 
@@ -184,12 +183,12 @@ if __name__ == '__main__':
     site_depot_dist = dist.iloc[site_locations, possible_depot_locations].reset_index().melt(id_vars='index')
     site_depot_dist['variable'] = site_depot_dist['variable'].astype('int')
     site_depot_dist = {(row[0], row[1]): row[2] for row in site_depot_dist.values}
-    model3 = CFLP_second_year(I=site_locations,
-                              J=possible_depot_locations,
-                              d=biomass_demand,
-                              M=depot_capacity,
-                              c=site_depot_dist,
-                              y=boolean_depot_locations)
+    model3 = CFLP_recalculate_routes(I=site_locations,
+                                     J=possible_depot_locations,
+                                     d=biomass_demand,
+                                     M=depot_capacity,
+                                     c=site_depot_dist,
+                                     y=boolean_depot_locations)
     model3.optimize()
     x3 = model3.data
     depot_routes_year2 = [(i, j) for (i, j) in x3 if model3.getVal(x3[i, j]) > EPS]
@@ -205,12 +204,12 @@ if __name__ == '__main__':
     depot_refinery_dist = dist.iloc[depot_locations, possible_refinery_locations].reset_index().melt(id_vars='index')
     depot_refinery_dist['variable'] = depot_refinery_dist['variable'].astype('int')
     depot_refinery_dist = {(row[0], row[1]): row[2] for row in depot_refinery_dist.values}
-    model4 = CFLP_second_year(I=site_locations,
-                              J=possible_refinery_locations,
-                              d=pellet_demand,
-                              M=refinery_capacity,
-                              c=depot_refinery_dist,
-                              y=boolean_refinery_locations)
+    model4 = CFLP_recalculate_routes(I=site_locations,
+                                     J=possible_refinery_locations,
+                                     d=pellet_demand,
+                                     M=refinery_capacity,
+                                     c=depot_refinery_dist,
+                                     y=boolean_refinery_locations)
     model4.optimize()
     x4 = model4.data
     refinery_routes_year2 = [(i, j) for (i, j) in x3 if model3.getVal(x3[i, j]) > EPS]
@@ -225,9 +224,9 @@ if __name__ == '__main__':
     refinery_locations_solution = get_locations(facilities=refinery_locations,
                                                 year='20182019',
                                                 data_type='refinery_location')
-    biomass_prediction_year1_solution = get_prediction(data=data,
+    biomass_prediction_year1_solution = get_prediction(data=prediction,
                                                        year = year1)
-    biomass_prediction_year2_solution = get_prediction(data=data,
+    biomass_prediction_year2_solution = get_prediction(data=prediction,
                                                        year = year2)
     depot_routes_year1_solution = get_routes_solution(model=model1,
                                                       x=x1,
