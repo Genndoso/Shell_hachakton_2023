@@ -12,7 +12,22 @@ EPS = 1.e-6
 year1 = '2018'; year2 = '2019'
 depot_cap = 20000
 refinery_cap = 100000
+biomass_percentage_to_collect = 0.85
 
+
+def preprocessing(data ,dist, biomass_percentage):
+    total_biomass = max(data['2018'].sum(), data['2019'].sum())
+    average_biomass = data.iloc[:, -2:].mean(axis=1)
+    sorted_dist = dist.sum(axis=1).sort_values(ascending=True).reset_index()
+    indices = []
+    biomass_to_collect = []
+    i = 0
+    while sum(biomass_to_collect) <= biomass_percentage * total_biomass:
+        biomass_to_collect.append(average_biomass[sorted_dist.iloc[i,0]])
+        indices.append(sorted_dist.iloc[i,0])
+        i += 1
+
+    return indices
 
 def kmedian(I, J, c, k):
     model = Model("k-median")
@@ -37,6 +52,10 @@ if __name__ == '__main__':
     # Prediction
     prediction = predict_biomass(data)
     average_biomass = prediction.iloc[:, -2:].mean(axis=1)
+    # Preprocess data
+    indices = preprocessing(prediction, dist, biomass_percentage=biomass_percentage_to_collect)
+    prediction = prediction.iloc[indices,:]
+    dist = dist.iloc[indices,indices]
     # Number of depots and refineries based on biomass demand
     number_of_depots = max(int(prediction['2018'].sum() / depot_cap) + 1, int(prediction['2019'].sum() / depot_cap) + 1)
     number_of_refineries = max(int(prediction['2018'].sum() / refinery_cap) + 1, int(prediction['2019'].sum() / refinery_cap) + 1)

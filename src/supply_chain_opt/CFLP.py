@@ -4,7 +4,7 @@ from sklearn.linear_model import TheilSenRegressor
 from pyscipopt import Model, quicksum, multidict
 import os
 os.chdir('/Users/user/PycharmProjects/Shell_hachakton_2023')
-
+from src.supply_chain_opt.kmedian_solution import preprocessing
 data = pd.read_csv('data/Biomass_History.csv', index_col=0)
 dist = pd.read_csv('data/Distance_Matrix.csv', index_col=0)
 
@@ -14,6 +14,7 @@ max_number_of_depots = 25
 max_number_of_refineries = 5
 depot_cap = 20000
 refinery_cap = 100000
+biomass_percentage_to_collect = 0.85
 
 def predict_biomass(data):
     reg = TheilSenRegressor()
@@ -113,7 +114,10 @@ if __name__ == '__main__':
 
     # Prediction
     prediction = predict_biomass(data)
-
+    # Preprocessing
+    indices = preprocessing(prediction, dist, biomass_percentage=biomass_percentage_to_collect)
+    prediction = prediction.iloc[indices,:]
+    dist = dist.iloc[indices, indices]
 
     # 2018
     # Get site locations and biomass demand
