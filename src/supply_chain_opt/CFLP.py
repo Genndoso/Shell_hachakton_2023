@@ -1,10 +1,11 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import TheilSenRegressor
+from sklearn.cluster import KMeans
+from sklearn.neighbors import NearestNeighbors
 from pyscipopt import Model, quicksum, multidict
 import os
 os.chdir('/Users/user/PycharmProjects/Shell_hachakton_2023')
-from src.supply_chain_opt.kmedian_solution import preprocessing
 data = pd.read_csv('data/Biomass_History.csv', index_col=0)
 dist = pd.read_csv('data/Distance_Matrix.csv', index_col=0)
 
@@ -15,6 +16,58 @@ max_number_of_refineries = 5
 depot_cap = 20000
 refinery_cap = 100000
 biomass_percentage_to_collect = 0.85
+
+
+def preprocessing(data ,dist, biomass_percentage):
+    total_biomass = max(data['2018'].sum(), data['2019'].sum())
+    average_biomass = data.iloc[:, -2:].mean(axis=1)
+    sorted_dist = dist.sum(axis=1).sort_values(ascending=True)
+    indices = []
+    biomass_to_collect = []
+    i = 0
+    while sum(biomass_to_collect) <= biomass_percentage * total_biomass:
+        biomass_to_collect.append(average_biomass[sorted_dist.index[i]])
+        indices.append(sorted_dist.index[i])
+        i += 1
+
+    return indices
+
+def cluster_preprocessing(data, num_clusters=5, num_closest_points=10):
+    # Selecting the longitude and latitude columns
+    print(data)
+    X = data[['Longitude', 'Latitude']]
+
+    # Perform k-means clustering
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+    kmeans.fit(X)
+
+    # Get cluster centers
+    cluster_centers = kmeans.cluster_centers_
+
+    # Find the 5 closest points to each cluster center
+    closest_points = []
+    closest_points_indices = []
+
+    for cluster_center in cluster_centers:
+        # Fit a NearestNeighbors model on the data points belonging to the current cluster
+        cluster_indices = (kmeans.labels_ == kmeans.predict([cluster_center])).nonzero()[0]
+        cluster_data = X.iloc[cluster_indices]
+
+        nn_model = NearestNeighbors(n_neighbors=num_closest_points)
+        nn_model.fit(cluster_data)
+
+        # Find the indices of the closest points in the cluster
+        _, indices = nn_model.kneighbors([cluster_center])
+
+        # Append the closest points to the list
+        closest_points.extend(cluster_data.iloc[indices[0]].values)
+
+        # Append the closest points' indices to the list
+        closest_points_indices.extend(cluster_indices[indices[0]])
+
+    closest_points_indices = np.array(closest_points_indices)
+
+    return cluster_centers, closest_points, closest_points_indices
 
 def predict_biomass(data):
     reg = TheilSenRegressor()
@@ -105,7 +158,7 @@ def get_prediction(data, year):
     solution['data_type'] = 'biomass_forecast'
     solution['source_index'] = data.index
     solution['destination_index'] = np.nan
-    solution['value'] = data[year]
+    solution['value'] = data[year].values
 
     return solution
 

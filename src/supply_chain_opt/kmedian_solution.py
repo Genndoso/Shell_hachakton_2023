@@ -2,11 +2,14 @@ import pandas as pd
 from pyscipopt import Model, quicksum, multidict
 import os
 os.chdir('/Users/user/PycharmProjects/Shell_hachakton_2023')
-from src.supply_chain_opt.CFLP import predict_biomass, CFLP_recalculate_routes,\
-    get_prediction, get_locations, get_routes_solution
+from src.supply_chain_opt.CFLP import preprocessing, predict_biomass, CFLP_recalculate_routes,\
+    get_prediction, get_locations, get_routes_solution, cluster_preprocessing
 
 data = pd.read_csv('data/Biomass_History.csv', index_col=0)
 dist = pd.read_csv('data/Distance_Matrix.csv', index_col=0)
+data = data.sample(200)
+indices_list = list(data.index)
+dist = dist.loc[data.index, [str(i) for i in indices_list]]
 
 EPS = 1.e-6
 year1 = '2018'; year2 = '2019'
@@ -14,20 +17,6 @@ depot_cap = 20000
 refinery_cap = 100000
 biomass_percentage_to_collect = 0.85
 
-
-def preprocessing(data ,dist, biomass_percentage):
-    total_biomass = max(data['2018'].sum(), data['2019'].sum())
-    average_biomass = data.iloc[:, -2:].mean(axis=1)
-    sorted_dist = dist.sum(axis=1).sort_values(ascending=True).reset_index()
-    indices = []
-    biomass_to_collect = []
-    i = 0
-    while sum(biomass_to_collect) <= biomass_percentage * total_biomass:
-        biomass_to_collect.append(average_biomass[sorted_dist.iloc[i,0]])
-        indices.append(sorted_dist.iloc[i,0])
-        i += 1
-
-    return indices
 
 def kmedian(I, J, c, k):
     model = Model("k-median")
@@ -51,11 +40,14 @@ if __name__ == '__main__':
 
     # Prediction
     prediction = predict_biomass(data)
-    average_biomass = prediction.iloc[:, -2:].mean(axis=1)
     # Preprocess data
     indices = preprocessing(prediction, dist, biomass_percentage=biomass_percentage_to_collect)
-    prediction = prediction.iloc[indices,:]
-    dist = dist.iloc[indices,indices]
+    prediction = prediction.loc[indices]
+    average_biomass = prediction.iloc[:, -2:].mean(axis=1)
+    dist = dist.loc[indices, [str(i) for i in indices]]
+    print(dist.shape)
+    print(average_biomass.shape)
+
     # Number of depots and refineries based on biomass demand
     number_of_depots = max(int(prediction['2018'].sum() / depot_cap) + 1, int(prediction['2019'].sum() / depot_cap) + 1)
     number_of_refineries = max(int(prediction['2018'].sum() / refinery_cap) + 1, int(prediction['2019'].sum() / refinery_cap) + 1)
@@ -64,18 +56,29 @@ if __name__ == '__main__':
     # Site locations and biomass demand
     site_locations, biomass_demand_year1 = multidict(dict(prediction[year1]))
     _, biomass_demand_year2 = multidict(dict(prediction[year2]))
-    # Possible depot and refinery locations
+    # Possible depot locations (with cluster preprocessing)
     capacity1 = pd.Series(depot_cap, index=prediction[year1].index)  # assuming all possible locations
-    possible_depot_locations, depot_capacity = multidict(dict(capacity1))
+    _, depot_capacity = multidict(dict(capacity1))
+    _, _, possible_depot_locations = cluster_preprocessing(data=prediction, num_clusters=number_of_depots, num_closest_points=5)
+    possible_depot_locations = list(possible_depot_locations)
+    print(f'indices: {prediction.index}')
+    print(f'possible depot locations: {possible_depot_locations}')
+    print(dist.columns)
+    if str(possible_depot_locations[0]) in dist.columns:
+        print(True)
+    else:
+        print(False)
+    # Possible refinery locations
     capacity2 = pd.Series(refinery_cap, index=prediction[year1].index)
     possible_refinery_locations, refinery_capacity = multidict(dict(capacity2))
-    # Dist matrix
-    site_depot_dist = dist.iloc[site_locations, possible_depot_locations].reset_index().melt(id_vars='index')
+    # Dist matrix. Use .loc to take str column names from dist
+    site_depot_dist = dist.loc[site_locations, [str(pdl) for pdl in possible_depot_locations]].reset_index().melt(id_vars='Index')
+
     site_depot_dist['variable'] = site_depot_dist['variable'].astype('int')
     site_depot_dist = {(row[0], row[1]): row[2] for row in site_depot_dist.values}
     # Weighted dist matrix
-    weighted_dist = (dist.iloc[site_locations, possible_depot_locations].T * average_biomass).T
-    site_depot_weighted_dist = weighted_dist.reset_index().melt(id_vars='index')
+    weighted_dist = (dist.loc[site_locations, [str(pdl) for pdl in possible_depot_locations]].T * average_biomass).T
+    site_depot_weighted_dist = weighted_dist.reset_index().melt(id_vars='Index')
     site_depot_weighted_dist['variable'] = site_depot_weighted_dist['variable'].astype('int')
     site_depot_weighted_dist = {(row[0], row[1]): row[2] for row in site_depot_weighted_dist.values}
 
@@ -92,7 +95,8 @@ if __name__ == '__main__':
     print("Depots at nodes: ", depot_locations)
 
     # Depot - Refinery distance matrix
-    depot_refinery_dist = dist.iloc[depot_locations, possible_refinery_locations].reset_index().melt(id_vars='index')
+    depot_refinery_dist = dist.loc[depot_locations, [str(prl) for prl in possible_refinery_locations]]
+    depot_refinery_dist = depot_refinery_dist.reset_index().melt(id_vars='Index')
     depot_refinery_dist['variable'] = depot_refinery_dist['variable'].astype('int')
     depot_refinery_dist = {(row[0], row[1]): row[2] for row in depot_refinery_dist.values}
 
