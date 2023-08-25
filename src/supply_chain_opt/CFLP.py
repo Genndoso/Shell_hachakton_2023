@@ -36,6 +36,7 @@ def cluster_preprocessing(data, num_clusters=5, num_closest_points=10):
     # Selecting the longitude and latitude columns
     print(data)
     X = data[['Longitude', 'Latitude']]
+    print(f'initial data X: {X}')
 
     # Perform k-means clustering
     kmeans = KMeans(n_clusters=num_clusters, random_state=42)
@@ -43,7 +44,6 @@ def cluster_preprocessing(data, num_clusters=5, num_closest_points=10):
 
     # Get cluster centers
     cluster_centers = kmeans.cluster_centers_
-
     # Find the 5 closest points to each cluster center
     closest_points = []
     closest_points_indices = []
@@ -63,7 +63,7 @@ def cluster_preprocessing(data, num_clusters=5, num_closest_points=10):
         closest_points.extend(cluster_data.iloc[indices[0]].values)
 
         # Append the closest points' indices to the list
-        closest_points_indices.extend(cluster_indices[indices[0]])
+        closest_points_indices.extend(cluster_data.index[indices[0]])
 
     closest_points_indices = np.array(closest_points_indices)
 
@@ -83,6 +83,7 @@ def predict_biomass(data):
     data_predicted = pd.concat([data, pred_df], axis=1)
 
     return data_predicted
+
 def CFLP(I,J,d,M,c,n):
     model = Model("flp")
     x,y = {},{}
@@ -183,6 +184,8 @@ if __name__ == '__main__':
     site_depot_dist = dist.iloc[site_locations, possible_depot_locations].reset_index().melt(id_vars='index')
     site_depot_dist['variable'] = site_depot_dist['variable'].astype('int')
     site_depot_dist = {(row[0], row[1]): row[2] for row in site_depot_dist.values}
+
+
     # Optimize depot locations
     model1 = CFLP(I=site_locations,
                   J=possible_depot_locations,
